@@ -8,6 +8,7 @@ public class AdoptiumReleaseType {
      * }
      */
     public int featureVersion;
+    public String releaseVersion;
     public String imageType;
 
 

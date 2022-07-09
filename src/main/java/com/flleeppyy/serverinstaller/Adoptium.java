@@ -1,7 +1,6 @@
 package com.flleeppyy.serverinstaller;
 
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,38 +12,47 @@ import org.apache.hc.client5.http.fluent.Request;
 public class Adoptium {
     static Gson gson = new Gson().newBuilder().setPrettyPrinting().create();
 
-    static class AdoptiumRelease {
-        @SerializedName("binaries")   Binary[] Binaries;
-        @SerializedName("release_name") String Release;
-        @SerializedName("version_data") VersionData VersionData;
+    public static class AdoptiumRelease {
+        @SerializedName("binaries")     public Binary[] Binaries;
+        @SerializedName("release_name") public String Release;
+        @SerializedName("version_data") public VersionData VersionData;
     }
 
-    static class Binary {
-        @SerializedName("image_type") String ImageType;
-        @SerializedName("package") Package Package;
+    public static class AdoptiumBinaryView {
+        @SerializedName("binary") public Binary Binary;
+        @SerializedName("release_name") public String Release;
+        @SerializedName("version") public VersionData VersionData;
     }
 
-    static class Package {
-        @SerializedName("checksum") String Checksum;
-        @SerializedName("link") String Link;
-        @SerializedName("name") String Name;
-        @SerializedName("size") int Size;
+    public static class Binary {
+        @SerializedName("image_type") public String ImageType;
+        @SerializedName("package")    public DownloadInfo Package;
+        @SerializedName("installer")  public DownloadInfo installer;
     }
 
-    static class VersionData {
-        @SerializedName("semver") String semver;
+
+
+    public static class DownloadInfo {
+        @SerializedName("checksum") public String Checksum;
+        @SerializedName("link") public String Link;
+        @SerializedName("name") public String Name;
+        @SerializedName("size") public int Size;
+    }
+
+    public static class VersionData {
+        @SerializedName("semver") public String semver;
     }
 
     static class InstallProperties {
-        AdoptiumRelease Release;
-        Binary Binary;
-        Path ArchivePath;
+        public AdoptiumRelease Release;
+        public Binary Binary;
+        public Path ArchivePath;
     }
 
     static class AdoptiumJavaProvider {
-        String short_version;
-        String SemverTarget;
-        InstallProperties InstallProps;
+        public String short_version;
+        public String SemverTarget;
+        public InstallProperties InstallProps;
     }
 
     static String ADOPTIUM_URL = "https://api.adoptium.net";
@@ -83,10 +91,24 @@ public class Adoptium {
 
     static int[] validJavaVersions = new int[] { 8,11,16,17,18 };
 
-    public static AdoptiumRelease[] GetLatestReleaseAssets(int javaVersion, String architecture, String os, String imageType) throws IOException {
+    public static AdoptiumBinaryView GetLatestAssets(int javaVersion, String architecture, String os, String imageType) throws IOException {
         argumentChecker(javaVersion, architecture, os, imageType);
 
         String url = ADOPTIUM_URL + "v3/assets/latest/" + javaVersion + "/hotspot";
+        // Query params
+        url += "?arch=" + architecture;
+        url += "&os=" + os;
+        url += "&image_type=" + imageType;
+
+        // End query params
+
+        return gson.fromJson(Request.get(url).execute().returnContent().asString(), AdoptiumBinaryView.class);
+    }
+
+    public static AdoptiumRelease[] GetLatestReleases(int javaVersion, String architecture, String os, String imageType) throws IOException {
+        argumentChecker(javaVersion, architecture, os, imageType);
+
+        String url = ADOPTIUM_URL + "v3/assets/feature_releases/" + javaVersion + "/ga";
         // Query params
         url += "?arch=" + architecture;
         url += "&os=" + os;
@@ -119,15 +141,8 @@ public class Adoptium {
     }
 
     private static void argumentChecker(int javaVersion, String architecture, String os, String imageType) {
-        boolean tripped = false;
-        for (int validJavaVersion : validJavaVersions) {
-            if (validJavaVersion != javaVersion) {
-                tripped = true;
-                break;
-            }
-        }
-        if (tripped) {
-            throw new IllegalArgumentException("Invalid Java version");
+        if (Arrays.stream(validJavaVersions).noneMatch(validVersion -> javaVersion == validVersion)) {
+            throw new IllegalArgumentException("Invalid Java version: " + javaVersion);
         }
 
         argumentChecker(architecture, os, imageType);

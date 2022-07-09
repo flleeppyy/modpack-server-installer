@@ -4,8 +4,12 @@ import com.flleeppyy.serverinstaller.Adoptium;
 import com.flleeppyy.serverinstaller.Json.ModpackInfo;
 import com.flleeppyy.serverinstaller.Json.ModpackVersionSpec;
 import com.flleeppyy.serverinstaller.ModpackApi;
+import com.github.zafarkhaja.semver.Version;
 import net.lingala.zip4j.ZipFile;
 import net.lingala.zip4j.model.FileHeader;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.hc.client5.http.fluent.Request;
 import org.ini4j.Ini;
 
@@ -15,7 +19,6 @@ import java.io.*;
 import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -23,6 +26,8 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class ModpackServerInstaller {
     Path serverPath;
@@ -57,11 +62,16 @@ public class ModpackServerInstaller {
             return 1;
         }
     }
+
+    // TODO: Reimplement progress shit to be easier
     private int _installModpack(ModpackInfo modpackInfo, String version, boolean ignoreEmpty) throws IOException {
         // Re-fetch modpack for various reasons
         setOperation("Initialization (1/4)","Fetching modpack", 1);
 
         modpack = ModpackApi.getModpack(modpackInfo.name);
+        if (modpack.server == null) {
+            throw new IOException("Modpack doesn't support server installation");
+        }
 
         setOperation("Initialization (2/4)","Checking version", 1);
         {
@@ -85,11 +95,11 @@ public class ModpackServerInstaller {
         setOperation("Initialization (4/4)", "Getting version spec", 1);
         ModpackVersionSpec versionSpec = ModpackApi.getModpackVersionSpec(modpack.name, version);
 
-        setOperation("Downloads (1/4)", "Making temp folder",1);
+        setOperation("Downloads (1/6)", "Making temp folder",1);
         generateTempFolder();
         File packFilePath = tempFolder.resolve(versionSpec.filename).toFile();
 
-        setOperation("Downloads (2/4)", "Downloading modpack file",1);
+        setOperation("Downloads (2/6)", "Downloading modpack file",1);
         {
             if (Objects.equals(versionSpec.filetype, "zip")) {
                 URL packURL = new URL(versionSpec.url);
@@ -108,7 +118,7 @@ public class ModpackServerInstaller {
             }
         }
 
-        setOperation("Downloads (3/4)", "Downloading Log4jPatcher",1);
+        setOperation("Downloads (3/6)", "Downloading Log4jPatcher",1);
         {
             Path log4jAgentPath = Files.createDirectory(serverPath.resolve("javaAgents"));
             InputStream log4jStream = Request.get("https://github.com/CreeperHost/Log4jPatcher/releases/download/v1.0.1/Log4jPatcher-1.0.1.jar")
@@ -125,11 +135,64 @@ public class ModpackServerInstaller {
             }
         }
 
-        setOperation("Downloads (4/4)", "Downloading Adoptium JRE");
+        setOperation("Downloads (4/6)", "Downloading JRE");
         {
-            Adoptium.GetLatestReleaseAssets(modpack.server.java);
+            String arch = System.getProperty("os.arch");
+            String os = System.getProperty("os.name");
+
+            Adoptium.Binary binary;
+            if (modpack.server.java == null) {
+                // lets just, uhhh cheeseburger
+                binary = Adoptium.GetLatestAssets(getJavaReleaseForMinecraftVersion(modpack.minecraftVersion), arch, os, "jre").Binary;
+            } else {
+                binary = Adoptium.GetReleaseAssetByVer(modpack.server.java.adoptium.releaseVersion, arch, os, "jre").Binaries[0];
+            }
+
+            Path jrePath = Files.createDirectory(serverPath.resolve("jre"));
+            InputStream jreStream = Request.get(binary.Package.Link).execute().returnContent().asStream();
+            if (binary.Package.Link.endsWith(".tar.gz")) {
+                // tar.gz
+                try (TarArchiveInputStream tarIn = new TarArchiveInputStream(new GzipCompressorInputStream(jreStream))) {
+                    TarArchiveEntry entry;
+                    while ((entry = tarIn.getNextTarEntry()) != null) {
+                        if (entry.isDirectory()) {
+                            Files.createDirectories(jrePath.resolve(entry.getName()));
+                        } else {
+                            Files.copy(tarIn, jrePath.resolve(entry.getName()));
+                        }
+                    }
+                }
+            } else if (binary.Package.Link.endsWith(".zip")) {
+                // zip
+                try (ZipInputStream zipIn = new ZipInputStream(jreStream)) {
+                    ZipEntry entry;
+                    while ((entry = zipIn.getNextEntry()) != null) {
+                        if (entry.isDirectory()) {
+                            Files.createDirectories(jrePath.resolve(entry.getName()));
+                        } else {
+                            Files.copy(zipIn, jrePath.resolve(entry.getName()));
+                        }
+                    }
+                }
+            } else if (binary.Package.Link.endsWith(".msi")) {
+                // Shouldn't be possible, but just in case
+                throw new IOException("MSI is not supported");
+            } else {
+                // unknown
+                throw new IllegalArgumentException("Unknown binary type: " + binary.Package.Link);
+            }
         }
 
+        // TODO: Add fabric support lmao
+        setOperation("Downloads (5/6)", "Downloading Forge");
+        {
+
+        }
+
+        setOperation("Downloads (6/6)", "Downloading Minecraft Server");
+        {
+
+        }
     }
 
     void generateTempFolder() {
@@ -216,7 +279,39 @@ public class ModpackServerInstaller {
         progressBar.setValue(progressBar.getValue() + 1);
     }
 
-    void generateBatchFile() {
-        throw new UnsupportedOperationException("Not implemented yet");
+    void generateBatchFile(String relativeJavaPath) throws IOException {
+        byte[] blep = Files.readAllBytes(Paths.get(ModpackServerInstaller.class.getResource("/start.bat").getPath()));
+
+        StringBuilder sb = new StringBuilder();
+        for (byte b : blep) {
+            sb.append((char) b);
+        }
+
+        String args = "";
+        if (modpack.server.java.javaArgs != null) {
+            args = modpack.server.java.javaArgs;
+        }
+
+
+        String javaPath = serverPath.resolve(relativeJavaPath).toString();
+        // dont forget agent for log4j
+        sb.replace("%ARGUMENTSTEMPLATE%", javaPath + " -javaagent:javaAgents/Log4jPatcher-1.0.0.jar " + args);
+    }
+
+    // silly little hack because I'm actually fucking lazy
+    int getJavaReleaseForMinecraftVersion(String version) {
+        Version semver = new Version.Builder(version).build();
+
+        // Minecraft 1.17 and newer uses 17
+        if (semver.getMajorVersion() >= 1 && semver.getMinorVersion() >= 17) {
+            return 17;
+        }
+        // Minecraft 1.16 and older uses 8
+        else if (semver.getMajorVersion() >= 1 && semver.getMinorVersion() <= 16) {
+            return 8;
+        } else {
+            return 8;
+        }
+
     }
 }
