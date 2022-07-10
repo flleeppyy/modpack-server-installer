@@ -1,8 +1,34 @@
+// Some code inherited from TeamKun/ForgeCLI
+//MIT License
+//
+//Copyright (c) 2021 TeamKun., Kamesuta
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
+// I believe this is how licenses work?
+
 package com.flleeppyy.serverinstaller.Guis;
 
 import com.flleeppyy.serverinstaller.Adoptium;
 import com.flleeppyy.serverinstaller.Json.ModpackInfo;
 import com.flleeppyy.serverinstaller.Json.ModpackVersionSpec;
+import com.flleeppyy.serverinstaller.MetaPolyMC.Forge;
 import com.flleeppyy.serverinstaller.ModpackApi;
 import com.github.zafarkhaja.semver.Version;
 import net.lingala.zip4j.ZipFile;
@@ -16,18 +42,19 @@ import org.ini4j.Ini;
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import static com.sun.org.apache.bcel.internal.util.SecuritySupport.getParentClassLoader;
 
 public class ModpackServerInstaller {
     Path serverPath;
@@ -107,14 +134,6 @@ public class ModpackServerInstaller {
                 try (FileOutputStream fos = new FileOutputStream(packFilePath.toString())) {
                     fos.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
                 }
-
-                if (modpack.server.java.javaArgs == null) {
-                    ZipFile zipFile = new ZipFile(packFilePath);
-                    FileHeader fileHeader = zipFile.getFileHeader("instance.cfg");
-                    InputStream inputStream = zipFile.getInputStream(fileHeader);
-                    String[] jvmArgs = new Ini(inputStream).get("JvmArgs", String.class).trim().split(" ");
-                }
-
             }
         }
 
@@ -186,13 +205,122 @@ public class ModpackServerInstaller {
         // TODO: Add fabric support lmao
         setOperation("Downloads (5/6)", "Downloading Forge");
         {
+            if (modpack.forgeVersion != null) {
+                Forge.ForgeVersion forgeVersion = Forge.getRecommendedVersion(modpack.minecraftVersion);
 
+                if (forgeVersion == null) {
+                    throw new IOException("No recommended version found");
+                }
+                // Get Installer
+                String installerUrl = Forge.Utils.getInstallerUrl(forgeVersion);
+                if (installerUrl == null) {
+                    // TODO: Implement recovery section for GUI and CLI, telling the user to download the installer manually, and rename it to forgeinstaller.jar
+                    throw new IOException("No installer found");
+                }
+                // Download installer
+                InputStream installerStream = Request.get(installerUrl).execute().returnContent().asStream();
+                Path installerJar = Files.createTempFile("forgeinstaller", ".jar");
+                Files.copy(installerStream, installerJar, StandardCopyOption.REPLACE_EXISTING);
+
+
+            }
         }
 
         setOperation("Downloads (6/6)", "Downloading Minecraft Server");
         {
+            // Skipping cause forge downloads it for us yay
+        }
+
+        // Installation
+        setOperation("Installation (1/3)", "Installing Forge Server", 1);
+        {
+            // set path for forgeinstaller.jar
+            Path installerJar = serverPath.resolve("forgeinstaller.jar");
+
+            int method = 0;
+
+            if (method == 0) {
+                // Run installer
+                ProcessBuilder pb = new ProcessBuilder(
+                        "java",
+                        "-jar",
+                        installerJar.toString(),
+                        "--installServer",
+                        "--installDir",
+                        serverPath.toString()
+                );
+
+                // Log to file
+                Path logPath = Files.createTempFile("forgeinstaller", ".log");
+                pb.redirectError(logPath.toFile());
+                pb.redirectOutput(logPath.toFile());
+                Process process = pb.start();
+
+                // Wait for installer to finish
+                try {
+                    process.waitFor();
+                } catch (InterruptedException e) {
+                    throw new IOException("Installer interrupted");
+                }
+
+                // Check for errors
+                if (process.exitValue() != 0) {
+                    throw new IOException("Installer failed");
+                }
+            } else if (method == 1) {
+                try (URLClassLoader ucl = URLClassLoader.newInstance(new URL[]{
+                        ModpackServerInstaller.class.getProtectionDomain().getCodeSource().getLocation(),
+                        installerJar.toUri().toURL()
+                }, getParentClassLoader())) {
+                    Class<?> installer = ucl.loadClass("com.flleeppyy.serverinstaller.Installer.Guis");
+                    if (!(boolean) installer.getMethod("install", File.class, File.class).invoke(null, serverPath.toFile(), installerJar.toFile())) {
+                        throw new IOException("Installer failed");
+                    }
+                } catch (ClassNotFoundException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        // Extract modpack
+        setOperation("Installation (2/3)", "Beating your ass in the quote retweets",1);
+        {
 
         }
+
+        setOperation("Installation (3/3)", "Setting up batch files",1 );
+        {
+            if (modpack.server.java.javaArgs == null) {
+                ZipFile zipFile = new ZipFile(packFilePath);
+                FileHeader fileHeader = zipFile.getFileHeader("instance.cfg");
+                InputStream inputStream = zipFile.getInputStream(fileHeader);
+                String[] jvmArgs = new Ini(inputStream).get("JvmArgs", String.class).trim().split(" ");
+
+                zipFile.close();
+
+                // Join args together
+                StringBuilder sb = new StringBuilder();
+                for (String arg : jvmArgs) {
+                    sb.append(arg).append(" ");
+                }
+                modpack.server.java.javaArgs = sb.toString();
+
+                // Save to pack file
+            }
+        }
+
+
+    }
+
+    private static ClassLoader getParentClassLoader() {
+        if (!System.getProperty("java.version").startsWith("1.")) {
+            try {
+                return (ClassLoader) ClassLoader.class.getDeclaredMethod("getPlatformClassLoader").invoke(null);
+            } catch (Exception e) {
+                System.out.println("No platform classloader: " + System.getProperty("java.version"));
+            }
+        }
+        return null;
     }
 
     void generateTempFolder() {
