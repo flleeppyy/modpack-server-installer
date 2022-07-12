@@ -41,6 +41,8 @@ public class InstallModpack {
 
     static String descriptionTemplate;
 
+    static ModpackServerInstaller modpackServerInstaller;
+
     static {
         try {
             descriptionTemplate = new String(
@@ -228,8 +230,15 @@ public class InstallModpack {
                 @Override
                 public void mouseClicked(MouseEvent e) {
 //                    super.mouseClicked(e);
-                    if (!validateServerFolder() && !shiftDown) {
+                    if (!shiftDown && !validateServerFolder() ) {
                         showInvalidPathError();
+                    }
+                    modpackServerInstaller = new ModpackServerInstaller(serverFolder);
+                    try {
+                        modpackServerInstaller.installModpack(selectedPack,"1.0.0-alpha.5",true,true);
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+
                     }
                 }
             });
@@ -339,8 +348,11 @@ public class InstallModpack {
     }
 
     static boolean validateServerFolder() {
-        String folderRaw = pathField.getText();
+        String folderRaw = serverFolder.toString();
+        System.out.println(folderRaw);
         if (folderRaw.length() < 1) {
+
+            System.out.println("Not valid path");
             return false;
         }
 
@@ -361,6 +373,14 @@ public class InstallModpack {
             System.out.println("Error checking folder contents\n");
             return false;
         }
+    }
+
+    static void showInvalidPathError() {
+        JOptionPane.showMessageDialog(null,
+                "Invalid server folder path. Folder must be empty",
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+        browseServerFolder();
     }
 
     static void updateVersionBox() {
@@ -406,17 +426,15 @@ public class InstallModpack {
         // If the shift key is being held down at the time of the call
         if (!validateServerFolder() && !shiftDown) {
             showInvalidPathError();
+            return;
         }
 
+        pathField.setText(path.toString());
+
+
     }
 
-    static void showInvalidPathError() {
-        JOptionPane.showMessageDialog(null,
-                "Invalid server folder path. Folder must be empty",
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-        browseServerFolder();
-    }
+
 
     static void returnToMainMenu() {
         mainFrame.dispose();

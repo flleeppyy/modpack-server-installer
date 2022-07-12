@@ -15,7 +15,7 @@ import java.util.Arrays;
 public class ModpackApi {
     private static final Gson g = new Gson().newBuilder().create();
 
-    protected static URI baseUri;
+    static URI baseUri;
 
     static {
         try {
@@ -28,7 +28,9 @@ public class ModpackApi {
     }
 
     public static ModpackInfo getModpack(String modpack) throws IOException {
-        String response = Request.get(baseUri + "/" + modpack)
+        String url = baseUri + "/" + modpack;
+        System.out.println(url);
+        String response = Request.get(url)
                 .execute().returnContent().asString();
         return g.fromJson(response, ModpackInfo.class);
     }

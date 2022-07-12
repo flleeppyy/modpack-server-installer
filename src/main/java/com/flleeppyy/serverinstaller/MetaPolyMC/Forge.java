@@ -42,7 +42,7 @@ public class Forge {
         @SerializedName("downloads") public Common.Downloads Downloads;
     }
 
-    public ForgeVersion getForgeVersion(String version) throws IOException {
+    public static ForgeVersion getForgeVersion(String version) throws IOException {
         return getUrl(baseUrl + "/" + version + ".json", ForgeVersion.class);
     }
 
@@ -96,7 +96,9 @@ public class Forge {
     public static class Utils {
         public static String getInstallerUrl(ForgeVersion forgeVersion) {
             String version = forgeVersion.version;
-
+            if (version == null) {
+                return null;
+            }
             return "https://maven.minecraftforge.net/net/minecraftforge/forge/" + version + "/forge-" + version + "-installer.jar";
         }
     }

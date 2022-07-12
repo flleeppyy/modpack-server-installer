@@ -54,8 +54,6 @@ import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import static com.sun.org.apache.bcel.internal.util.SecuritySupport.getParentClassLoader;
-
 public class ModpackServerInstaller {
     Path serverPath;
     ModpackInfo modpack;
@@ -251,7 +249,7 @@ public class ModpackServerInstaller {
                 );
 
                 // Log to file
-                Path logPath = Files.createTempFile("forgeinstaller", ".log");
+                Path logPath = Files.createFile(serverPath.resolve("forgeinstaller.log"));
                 pb.redirectError(logPath.toFile());
                 pb.redirectOutput(logPath.toFile());
                 Process process = pb.start();
@@ -310,6 +308,7 @@ public class ModpackServerInstaller {
         }
 
 
+        return 0;
     }
 
     private static ClassLoader getParentClassLoader() {
@@ -407,12 +406,12 @@ public class ModpackServerInstaller {
         progressBar.setValue(progressBar.getValue() + 1);
     }
 
-    void generateBatchFile(String relativeJavaPath) throws IOException {
+    String generateBatchFile(String relativeJavaPath) throws IOException {
         byte[] blep = Files.readAllBytes(Paths.get(ModpackServerInstaller.class.getResource("/start.bat").getPath()));
 
-        StringBuilder sb = new StringBuilder();
+        String sb = "";
         for (byte b : blep) {
-            sb.append((char) b);
+            sb += ((char) b);
         }
 
         String args = "";
@@ -420,10 +419,9 @@ public class ModpackServerInstaller {
             args = modpack.server.java.javaArgs;
         }
 
-
         String javaPath = serverPath.resolve(relativeJavaPath).toString();
         // dont forget agent for log4j
-        sb.replace("%ARGUMENTSTEMPLATE%", javaPath + " -javaagent:javaAgents/Log4jPatcher-1.0.0.jar " + args);
+        return sb.replace("%ARGUMENTSTEMPLATE%", javaPath + " -javaagent:javaAgents/Log4jPatcher-1.0.0.jar " + args);
     }
 
     // silly little hack because I'm actually fucking lazy

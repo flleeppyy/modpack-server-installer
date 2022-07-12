@@ -5,13 +5,13 @@ import java.util.UUID;
 
 public class ModpackInfo {
     public UUID id;
+    public String formattedName;
     public String name;
     public String description;
     public String[] authors;
     public String minecraftVersion;
     public String forgeVersion;
     public String baseMinecraftFolder;
-    // This could be either a string or an array of strings so if it's an array of strings YOU'RE FUCKED
     public String[] notes;
     public String preferredLauncher;
     public String type;
