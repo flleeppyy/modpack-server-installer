@@ -1,5 +1,6 @@
 package com.flleeppyy.serverinstaller;
 
+import com.flleeppyy.serverinstaller.Json.BasicModpack;
 import com.flleeppyy.serverinstaller.Json.ModpackInfo;
 import com.flleeppyy.serverinstaller.Json.ModpackVersionSpec;
 import com.google.gson.Gson;
@@ -10,7 +11,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Arrays;
 
 public class ModpackApi {
     private static final Gson g = new Gson().newBuilder().create();
@@ -19,7 +19,7 @@ public class ModpackApi {
 
     static {
         try {
-            baseUri = new URI("https://fleepy.tv/api/modpacks");
+            baseUri = new URI("https://fleepy.tv/api/v2/modpacks");
         } catch (URISyntaxException e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(null,e,"Error",JOptionPane.ERROR_MESSAGE);
@@ -27,26 +27,26 @@ public class ModpackApi {
         }
     }
 
-    public static ModpackInfo getModpack(String modpack) throws IOException {
-        String url = baseUri + "/" + modpack;
+    public static ModpackInfo getModpack(String modpackId) throws IOException {
+        String url = baseUri + "/" + modpackId;
         System.out.println(url);
         String response = Request.get(url)
                 .execute().returnContent().asString();
         return g.fromJson(response, ModpackInfo.class);
     }
 
-    public static String[] getModpacksRaw() throws IOException {
+    public static BasicModpack[] getModpacksBasic() throws IOException {
         String response = Request.get(baseUri + "/")
                 .execute().returnContent().asString();
 
-        return g.fromJson(response, String[].class);
+        return g.fromJson(response, BasicModpack[].class);
     }
 
     public static ModpackInfo[] getModpacks() throws IOException {
-        String[] modpacksRaw = getModpacksRaw();
+        BasicModpack[] modpacksRaw = getModpacksBasic();
         ArrayList<ModpackInfo> modpacks = new ArrayList<>();
-        for (String packName : modpacksRaw) {
-            modpacks.add(getModpack(packName));
+        for (BasicModpack pack : modpacksRaw) {
+            modpacks.add(getModpack(pack.id.toString()));
         }
 
         ModpackInfo[] convertedList = new ModpackInfo[modpacks.size()];
