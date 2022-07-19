@@ -15,11 +15,13 @@ import java.util.ArrayList;
 public class ModpackApi {
     private static final Gson g = new Gson().newBuilder().create();
 
-    static URI baseUri;
+    public static URI modpacksUri;
+    public static URI baseUri;
 
     static {
         try {
-            baseUri = new URI("https://fleepy.tv/api/v2/modpacks");
+            modpacksUri = new URI("https://fleepy.tv/api/v2/modpacks");
+            baseUri = new URI("https://fleepy.tv");
         } catch (URISyntaxException e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(null,e,"Error",JOptionPane.ERROR_MESSAGE);
@@ -28,7 +30,7 @@ public class ModpackApi {
     }
 
     public static ModpackInfo getModpack(String modpackId) throws IOException {
-        String url = baseUri + "/" + modpackId;
+        String url = modpacksUri + "/" + modpackId;
         System.out.println(url);
         String response = Request.get(url)
                 .execute().returnContent().asString();
@@ -36,7 +38,7 @@ public class ModpackApi {
     }
 
     public static BasicModpack[] getModpacksBasic() throws IOException {
-        String response = Request.get(baseUri + "/")
+        String response = Request.get(modpacksUri + "/")
                 .execute().returnContent().asString();
 
         return g.fromJson(response, BasicModpack[].class);
@@ -57,13 +59,13 @@ public class ModpackApi {
     }
 
     public static ModpackVersionSpec getLatestModpackVersionSpec(String modpackName, boolean prerelease) throws IOException {
-        String response = Request.get(baseUri + String.format("/%s/latest/?prerelease=%s", modpackName, (prerelease ? "any" : "stable")))
+        String response = Request.get(modpacksUri + String.format("/%s/latest/?prerelease=%s", modpackName, (prerelease ? "any" : "stable")))
                 .execute().returnContent().asString();
         return g.fromJson(response, ModpackVersionSpec.class);
     }
 
     public static ModpackVersionSpec getModpackVersionSpec(String modpackName, String version) throws IOException {
-        String response = Request.get(baseUri + String.format("/%s/" + version, modpackName))
+        String response = Request.get(modpacksUri + String.format("/%s/" + version, modpackName))
                 .execute().returnContent().asString();
         return g.fromJson(response, ModpackVersionSpec.class);
     }

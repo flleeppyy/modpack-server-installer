@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
@@ -70,6 +71,15 @@ public class Adoptium {
         "riscv64"
     ));
 
+    // Architechure returned by System.getProperty("os.arch")
+    static Map<String, String> osarchToValidJavaArch = new java.util.HashMap<String, String>() {{
+        put("x86_64", "x64");
+        put("amd64", "x64");
+        put("i386", "x86");
+
+
+    }};
+
     static ArrayList<String> validOSs = new ArrayList<>(Arrays.asList(
         "linux",
         "windows",
@@ -94,7 +104,7 @@ public class Adoptium {
     public static AdoptiumBinaryView GetLatestAssets(int javaVersion, String architecture, String os, String imageType) throws IOException {
         argumentChecker(javaVersion, architecture, os, imageType);
 
-        String url = ADOPTIUM_URL + "v3/assets/latest/" + javaVersion + "/hotspot";
+        String url = ADOPTIUM_URL + "/v3/assets/latest/" + javaVersion + "/hotspot";
         // Query params
         url += "?arch=" + architecture;
         url += "&os=" + os;
@@ -102,13 +112,13 @@ public class Adoptium {
 
         // End query params
 
-        return gson.fromJson(Request.get(url).execute().returnContent().asString(), AdoptiumBinaryView.class);
+        return gson.fromJson(Request.get(url).execute().returnContent().asString(), AdoptiumBinaryView[].class)[0];
     }
 
     public static AdoptiumRelease[] GetLatestReleases(int javaVersion, String architecture, String os, String imageType) throws IOException {
         argumentChecker(javaVersion, architecture, os, imageType);
 
-        String url = ADOPTIUM_URL + "v3/assets/feature_releases/" + javaVersion + "/ga";
+        String url = ADOPTIUM_URL + "/v3/assets/feature_releases/" + javaVersion + "/ga";
         // Query params
         url += "?arch=" + architecture;
         url += "&os=" + os;
@@ -122,7 +132,7 @@ public class Adoptium {
     public static AdoptiumRelease GetReleaseAssetByVer(String version, String architecture, String os, String imageType) throws IOException {
         argumentChecker(architecture, os, imageType);
 
-        String url = ADOPTIUM_URL + "v3/assets/version/" + version ;
+        String url = ADOPTIUM_URL + "/v3/assets/version/" + version ;
         // Query params
         url += "&arch=" + architecture;
         url += "&os=" + os;

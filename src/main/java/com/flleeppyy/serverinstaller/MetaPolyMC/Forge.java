@@ -16,7 +16,7 @@ public class Forge {
     public static String baseUrl = "https://meta.polymc.org/v1/net.minecraftforge";
 
     public static class BaseForgeIndex extends BasePackageIndex {
-        @OverrideAnnotationOf @SerializedName("versions") public BaseForgeVersion[] versions;
+        @SerializedName("versions") public BaseForgeVersion[] versions;
     }
 
     public static class BaseForgeVersion {

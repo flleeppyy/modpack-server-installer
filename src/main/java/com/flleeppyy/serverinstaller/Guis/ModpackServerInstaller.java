@@ -51,6 +51,8 @@ import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -64,6 +66,7 @@ public class ModpackServerInstaller {
     int setProgressCalls = 0;
     JButton abortButton;
     boolean gui = false;
+    Thread modpackThread;
 
     Path tempFolder;
 
@@ -71,29 +74,41 @@ public class ModpackServerInstaller {
         this.serverPath = serverPath;
     }
 
-    public int installModpack(ModpackInfo modpackInfo, String version, boolean ignoreEmpty, boolean gui) throws IOException {
+    public void installModpack(ModpackInfo modpackInfo, String version, boolean ignoreEmpty, boolean gui) throws IOException {
         try {
             if (gui) {
                 initMainFrame();
                 this.gui = true;
+                Thread modpackThread = new Thread(() -> {
+                    try {
+                        _installModpack(modpackInfo, version, ignoreEmpty);
+                    } catch (IOException e) {
+                        balls(e);
+                    }
+                });
+
+                modpackThread.start();
+            } else {
+                _installModpack(modpackInfo, version, ignoreEmpty);
             }
-            return _installModpack(modpackInfo,version,ignoreEmpty);
         } catch (IOException e) {
-            e.printStackTrace();
-            if (gui) {
-                JOptionPane.showMessageDialog(null, "An error occurred installing the pack:\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                killFrame();
-            }
-            return 1;
+            balls(e);
         }
     }
 
+    private void balls(Exception e) {
+        e.printStackTrace();
+        if (gui) {
+            JOptionPane.showMessageDialog(null, "An error occurred installing the pack:\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            killFrame();
+        }
+    }
     // TODO: Reimplement progress shit to be easier
     private int _installModpack(ModpackInfo modpackInfo, String version, boolean ignoreEmpty) throws IOException {
         // Re-fetch modpack for various reasons
         setOperation("Initialization (1/4)","Fetching modpack", 1);
 
-        modpack = ModpackApi.getModpack(modpackInfo.name);
+        modpack = ModpackApi.getModpack(modpackInfo.id.toString());
         if (modpack.server == null) {
             throw new IOException("Modpack doesn't support server installation");
         }
@@ -118,7 +133,7 @@ public class ModpackServerInstaller {
         checkPath(ignoreEmpty);
 
         setOperation("Initialization (4/4)", "Getting version spec", 1);
-        ModpackVersionSpec versionSpec = ModpackApi.getModpackVersionSpec(modpack.name, version);
+        ModpackVersionSpec versionSpec = ModpackApi.getModpackVersionSpec(modpack.id.toString(), version);
 
         setOperation("Downloads (1/6)", "Making temp folder",1);
         generateTempFolder();
@@ -126,56 +141,103 @@ public class ModpackServerInstaller {
 
         setOperation("Downloads (2/6)", "Downloading modpack file",1);
         {
-            if (Objects.equals(versionSpec.filetype, "zip")) {
-                URL packURL = new URL(versionSpec.url);
-                ReadableByteChannel readableByteChannel = Channels.newChannel(packURL.openStream());
-                try (FileOutputStream fos = new FileOutputStream(packFilePath.toString())) {
-                    fos.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
+            if (!packFilePath.exists()) {
+                if (Objects.equals(versionSpec.filetype, "zip")) {
+                    URL packURL = new URL(versionSpec.getUrl());
+                    ReadableByteChannel readableByteChannel = Channels.newChannel(packURL.openStream());
+                    try (FileOutputStream fos = new FileOutputStream(packFilePath.toString())) {
+                        fos.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE);
+                    }
                 }
+            } else {
+                System.out.println("Pack file already exists, skipping download");
             }
         }
 
         setOperation("Downloads (3/6)", "Downloading Log4jPatcher",1);
         {
-            Path log4jAgentPath = Files.createDirectory(serverPath.resolve("javaAgents"));
-            InputStream log4jStream = Request.get("https://github.com/CreeperHost/Log4jPatcher/releases/download/v1.0.1/Log4jPatcher-1.0.1.jar")
-                .execute()
-                .returnContent()
-                .asStream();
+            Path javaAgentsFolder = serverPath.resolve("javaAgents");
+            if (!Files.exists(javaAgentsFolder)) {
+                Files.createDirectory(javaAgentsFolder);
+            }
 
-            OutputStream outStream = new FileOutputStream(log4jAgentPath.toFile());
+            Path log4jPatcherPath = javaAgentsFolder.resolve("log4jPatcher.jar");
 
-            byte[] buffer = new byte[8 * 1024];
-            int bytesRead;
-            while ((bytesRead = log4jStream.read(buffer)) != -1) {
-                outStream.write(buffer, 0, bytesRead);
+            if (!Files.exists(log4jPatcherPath)) {
+                InputStream log4jStream = Request.get("https://github.com/CreeperHost/Log4jPatcher/releases/download/v1.0.1/Log4jPatcher-1.0.1.jar")
+                        .execute()
+                        .returnContent()
+                        .asStream();
+
+                OutputStream outStream = new FileOutputStream(log4jPatcherPath.toString());
+
+                byte[] buffer = new byte[8 * 1024];
+                int bytesRead;
+                while ((bytesRead = log4jStream.read(buffer)) != -1) {
+                    outStream.write(buffer, 0, bytesRead);
+                }
+            } else {
+                System.out.println("Log4jPatcher already exists, skipping download");
             }
         }
 
         setOperation("Downloads (4/6)", "Downloading JRE");
-        {
-            String arch = System.getProperty("os.arch");
-            String os = System.getProperty("os.name");
+        if (!Files.exists(serverPath.resolve("jre"))) {
+            String os = System.getProperty("os.name").toLowerCase();
+
+            //https://stackoverflow.com/questions/47160990/how-to-determine-32-bit-os-or-64-bit-os-from-java-application
+            String arch = System.getenv("PROCESSOR_ARCHITECTURE");
+            String wow64Arch = System.getenv("PROCESSOR_ARCHITEW6432");
+
+            String realArch = arch != null && arch.endsWith("64")
+                    || wow64Arch != null && wow64Arch.endsWith("64")
+                    ? "64" : "32";
+
+            // god fucking dammit this is so stupid
+            // If 64, set realRealArch to "x64", otherwise set it to "x86"
+            String realRealArch = realArch.equals("64") ? "x64" : "x86";
+
+            String realOs;
+
+            // TODO: add more checks for the other OSes
+            if (os.contains("win")) {
+                realOs = "windows";
+            } else if (os.contains("mac")) {
+                realOs = "macos";
+                // copilot what
+            } else if (os.contains("linux")) {
+                realOs = "linux";
+            } else {
+                throw new IllegalArgumentException("Unsupported OS: " + os);
+            }
 
             Adoptium.Binary binary;
             if (modpack.server.java == null) {
                 // lets just, uhhh cheeseburger
-                binary = Adoptium.GetLatestAssets(getJavaReleaseForMinecraftVersion(modpack.minecraftVersion), arch, os, "jre").Binary;
+                binary = Adoptium.GetLatestAssets(getJavaReleaseForMinecraftVersion(modpack.minecraftVersion), realRealArch, realOs, "jre").Binary;
             } else {
                 binary = Adoptium.GetReleaseAssetByVer(modpack.server.java.adoptium.releaseVersion, arch, os, "jre").Binaries[0];
             }
 
-            Path jrePath = Files.createDirectory(serverPath.resolve("jre"));
+            Path jrePath = serverPath.resolve("jre");
+            if (!Files.exists(jrePath)) {
+                Files.createDirectory(jrePath);
+            }
             InputStream jreStream = Request.get(binary.Package.Link).execute().returnContent().asStream();
             if (binary.Package.Link.endsWith(".tar.gz")) {
                 // tar.gz
                 try (TarArchiveInputStream tarIn = new TarArchiveInputStream(new GzipCompressorInputStream(jreStream))) {
                     TarArchiveEntry entry;
                     while ((entry = tarIn.getNextTarEntry()) != null) {
+                        String regex = "(jdk|jre[a-z0-9\\\\-]*)\\\\/(.*)";
+                        Pattern pattern = Pattern.compile(regex);
+                        Matcher matcher = pattern.matcher(entry.getName());
+
+                        Path destEntryPath = entry.getName().matches(regex) ? jrePath.resolve(matcher.group(2)) : jrePath;
                         if (entry.isDirectory()) {
-                            Files.createDirectories(jrePath.resolve(entry.getName()));
+                            Files.createDirectories(destEntryPath);
                         } else {
-                            Files.copy(tarIn, jrePath.resolve(entry.getName()));
+                            Files.copy(tarIn, destEntryPath);
                         }
                     }
                 }
@@ -184,10 +246,15 @@ public class ModpackServerInstaller {
                 try (ZipInputStream zipIn = new ZipInputStream(jreStream)) {
                     ZipEntry entry;
                     while ((entry = zipIn.getNextEntry()) != null) {
+                        String regex = "(jdk|jre[a-z0-9\\\\-]*)\\\\/(.*)";
+                        Pattern pattern = Pattern.compile(regex);
+                        Matcher matcher = pattern.matcher(entry.getName());
+
+                        Path destEntryPath = entry.getName().matches(regex) ? jrePath.resolve(matcher.group(2)) : jrePath;
                         if (entry.isDirectory()) {
-                            Files.createDirectories(jrePath.resolve(entry.getName()));
+                            Files.createDirectories(destEntryPath);
                         } else {
-                            Files.copy(zipIn, jrePath.resolve(entry.getName()));
+                            Files.copy(zipIn, destEntryPath);
                         }
                     }
                 }
@@ -217,7 +284,7 @@ public class ModpackServerInstaller {
                 }
                 // Download installer
                 InputStream installerStream = Request.get(installerUrl).execute().returnContent().asStream();
-                Path installerJar = Files.createTempFile("forgeinstaller", ".jar");
+                Path installerJar = Files.createFile(serverPath.resolve("forge-installer.jar"));
                 Files.copy(installerStream, installerJar, StandardCopyOption.REPLACE_EXISTING);
 
 
@@ -322,8 +389,11 @@ public class ModpackServerInstaller {
         return null;
     }
 
-    void generateTempFolder() {
-        tempFolder = serverPath.resolve(Paths.get("temp" + UUID.randomUUID().toString().split("-")[0]));
+    void generateTempFolder() throws IOException {
+        tempFolder = serverPath.resolve("serverinstallerTemp");
+        if (!tempFolder.toFile().exists()) {
+            Files.createDirectories(tempFolder);
+        }
     }
 
     boolean deleteTempFolder()  {

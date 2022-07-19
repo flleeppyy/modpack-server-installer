@@ -230,8 +230,10 @@ public class InstallModpack {
                 @Override
                 public void mouseClicked(MouseEvent e) {
 //                    super.mouseClicked(e);
-                    if (!shiftDown && !validateServerFolder() ) {
-                        showInvalidPathError();
+                    String validFolder = validateServerFolder();
+                    if (validFolder != null) {
+                        JOptionPane.showMessageDialog(null, validFolder, "Error", JOptionPane.ERROR_MESSAGE);
+                        return;
                     }
                     modpackServerInstaller = new ModpackServerInstaller(serverFolder);
                     try {
@@ -347,40 +349,32 @@ public class InstallModpack {
         isResetting = false;
     }
 
-    static boolean validateServerFolder() {
-        String folderRaw = serverFolder.toString();
-        System.out.println(folderRaw);
-        if (folderRaw.length() < 1) {
+    static String validateServerFolder() {
+        if (serverFolder.toString().length() < 1)
+            return "Not valid path";
 
-            System.out.println("Not valid path");
-            return false;
-        }
+        if (!Files.isDirectory(serverFolder))
+            return "Folder is not a directory";
 
-        Path folder = Paths.get(folderRaw);
 
-        if (!Files.isDirectory(folder)) {
-            System.out.println("Folder is not a directory\n");
-            return false;
-        }
+        if (!Files.isWritable(serverFolder))
+            return "Folder is not writable";
 
+        return null;
+    }
+
+    static boolean isFolderEmpty() {
         try {
-            if (Files.list(folder).findAny().isPresent()) {
+            if (Files.list(serverFolder).findAny().isPresent()) {
                 System.out.println("Folder is not empty\n");
                 return false;
             }
             return true;
         } catch (IOException e) {
             System.out.println("Error checking folder contents\n");
+           JOptionPane.showMessageDialog(null, "Error checking folder contents\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
-    }
-
-    static void showInvalidPathError() {
-        JOptionPane.showMessageDialog(null,
-                "Invalid server folder path. Folder must be empty",
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-        browseServerFolder();
     }
 
     static void updateVersionBox() {
@@ -397,23 +391,24 @@ public class InstallModpack {
         JFileChooser filePicker = new JFileChooser(Preferences.userRoot().get("lastBrowsedFolder", ""));
         filePicker.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
-        filePicker.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                super.keyPressed(e);
-                if (e.isShiftDown()) {
-                    shiftDown = true;
-                }
-            }
-
-            @Override
-            public void keyReleased(KeyEvent e) {
-                super.keyReleased(e);
-                if (!e.isShiftDown()) {
-                    shiftDown = false;
-                }
-            }
-        });
+        // doesnt FUCKING WORK
+//        filePicker.addKeyListener(new KeyAdapter() {
+//            @Override
+//            public void keyPressed(KeyEvent e) {
+//                super.keyPressed(e);
+//                if (e.isShiftDown()) {
+//                    shiftDown = true;
+//                }
+//            }
+//
+//            @Override
+//            public void keyReleased(KeyEvent e) {
+//                super.keyReleased(e);
+//                if (!e.isShiftDown()) {
+//                    shiftDown = false;
+//                }
+//            }
+//        });
 
         int e = filePicker.showOpenDialog(null);
         if (e == JFileChooser.APPROVE_OPTION) {
@@ -423,19 +418,12 @@ public class InstallModpack {
 
     static void setServerFolderPath(Path path) {
         serverFolder = path;
-        // If the shift key is being held down at the time of the call
-        if (!validateServerFolder() && !shiftDown) {
-            showInvalidPathError();
-            return;
+        if (!isFolderEmpty()) {
+            JOptionPane.showMessageDialog(null, "The folder you selected is not empty.\nPlease be sure you want to install into this folder.\nThis is useful if you're recovering from a\nfailed server install, or predownloaded stuff.", "Error", JOptionPane.WARNING_MESSAGE);
         }
-
         pathField.setText(path.toString());
-
-
     }
-
-
-
+    
     static void returnToMainMenu() {
         mainFrame.dispose();
         refreshThread.interrupt();
