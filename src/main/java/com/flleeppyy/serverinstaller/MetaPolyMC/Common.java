@@ -69,11 +69,14 @@ public class Common {
         @Nullable @SerializedName("volatile") public boolean volatile_;
     }
 
+    /**
+     * Must implement serialized name "versions" based off PackageIndexVersion
+     */
     public static class BasePackageIndex {
         @SerializedName("formatVersion") public int formatVersion;
         @SerializedName("name") public String name;
         @SerializedName("uid") public String uid;
-        @SerializedName("versions") public PackageIndexVersion[] versions;
+//        @SerializedName("versions") public PackageIndexVersion[] versions;
     }
 
     public static class BasePackageVersion {
@@ -85,7 +88,7 @@ public class Common {
         @SerializedName("releaseTime") public String releaseTime;
         @SerializedName("order") public int order;
         //mainClass(nullable)
-        @Nullable @SerializedName("mainClass") public String mainClass;
+//        @Nullable @SerializedName("mainClass") public String mainClass;
     }
 
     public static Index getIndex() throws IOException {
@@ -97,11 +100,4 @@ public class Common {
         String response = request.execute().returnContent().asString();
         return gson.fromJson(response, clazz);
     }
-
-
-
-
-
-
-
 }

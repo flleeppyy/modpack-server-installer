@@ -230,6 +230,7 @@ public class InstallModpack {
                 @Override
                 public void mouseClicked(MouseEvent e) {
 //                    super.mouseClicked(e);
+                    okButton.setEnabled(false);
                     String validFolder = validateServerFolder();
                     if (validFolder != null) {
                         JOptionPane.showMessageDialog(null, validFolder, "Error", JOptionPane.ERROR_MESSAGE);
@@ -237,11 +238,17 @@ public class InstallModpack {
                     }
                     modpackServerInstaller = new ModpackServerInstaller(serverFolder);
                     try {
+                        // TODO: implement version selection
                         modpackServerInstaller.installModpack(selectedPack,"1.0.0-alpha.5",true,true);
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
 
+                        mainFrame.setVisible(false);
+                        mainFrame.dispose();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
                     }
+                    okButton.setEnabled(true);
+
+
                 }
             });
 
@@ -411,7 +418,10 @@ public class InstallModpack {
 //        });
 
         int e = filePicker.showOpenDialog(null);
+        // store last browsed folder
+
         if (e == JFileChooser.APPROVE_OPTION) {
+            Preferences.userRoot().put("lastBrowsedFolder", filePicker.getSelectedFile().getAbsolutePath());
             setServerFolderPath(filePicker.getSelectedFile().toPath());
         }
     }
@@ -419,7 +429,10 @@ public class InstallModpack {
     static void setServerFolderPath(Path path) {
         serverFolder = path;
         if (!isFolderEmpty()) {
-            JOptionPane.showMessageDialog(null, "The folder you selected is not empty.\nPlease be sure you want to install into this folder.\nThis is useful if you're recovering from a\nfailed server install, or predownloaded stuff.", "Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(null, "The folder you selected is not empty.\n" +
+                    "Please be sure you want to install into this folder.\n" +
+                    "This is useful if you're recovering from a\n" +
+                    "failed server install, or having pre-downloaded stuff.", "Error", JOptionPane.WARNING_MESSAGE);
         }
         pathField.setText(path.toString());
     }

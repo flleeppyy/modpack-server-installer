@@ -30,6 +30,8 @@ import com.flleeppyy.serverinstaller.Json.ModpackInfo;
 import com.flleeppyy.serverinstaller.Json.ModpackVersionSpec;
 import com.flleeppyy.serverinstaller.MetaPolyMC.Forge;
 import com.flleeppyy.serverinstaller.ModpackApi;
+import com.flleeppyy.serverinstaller.Utils.OtherUtils;
+import com.flleeppyy.serverinstaller.Utils.PolyCfgParser;
 import com.github.zafarkhaja.semver.Version;
 import net.lingala.zip4j.ZipFile;
 import net.lingala.zip4j.model.FileHeader;
@@ -37,7 +39,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.hc.client5.http.fluent.Request;
-import org.ini4j.Ini;
 
 import javax.swing.*;
 import java.awt.*;
@@ -62,9 +63,10 @@ public class ModpackServerInstaller {
 
     JFrame mainFrame;
     JLabel currentOperationLabel;
+    JTextPane logTextPane;
     JProgressBar progressBar;
-    int setProgressCalls = 0;
     JButton abortButton;
+    int setProgressCalls = 16;
     boolean gui = false;
     Thread modpackThread;
 
@@ -81,13 +83,23 @@ public class ModpackServerInstaller {
                 this.gui = true;
                 Thread modpackThread = new Thread(() -> {
                     try {
-                        _installModpack(modpackInfo, version, ignoreEmpty);
-                    } catch (IOException e) {
+                        int result = _installModpack(modpackInfo, version, ignoreEmpty);
+
+                        if (result == 0) {
+                            JOptionPane.showMessageDialog(mainFrame, "Modpack installed successfully!");
+                        } else {
+                            JOptionPane.showMessageDialog(mainFrame, "Modpack installation failed!");
+                        }
+
+                    } catch (Exception e) {
                         balls(e);
                     }
+                    mainFrame.setVisible(false);
+                    mainFrame.dispose();
                 });
 
-                modpackThread.start();
+            modpackThread.start();
+
             } else {
                 _installModpack(modpackInfo, version, ignoreEmpty);
             }
@@ -107,7 +119,6 @@ public class ModpackServerInstaller {
     private int _installModpack(ModpackInfo modpackInfo, String version, boolean ignoreEmpty) throws IOException {
         // Re-fetch modpack for various reasons
         setOperation("Initialization (1/4)","Fetching modpack", 1);
-
         modpack = ModpackApi.getModpack(modpackInfo.id.toString());
         if (modpack.server == null) {
             throw new IOException("Modpack doesn't support server installation");
@@ -181,49 +192,51 @@ public class ModpackServerInstaller {
             }
         }
 
+        Path jrePath = serverPath.resolve("jre");
+        String realOs;
+        String os = System.getProperty("os.name").toLowerCase();
+
+        //https://stackoverflow.com/questions/47160990/how-to-determine-32-bit-os-or-64-bit-os-from-java-application
+        String arch = System.getenv("PROCESSOR_ARCHITECTURE");
+        String wow64Arch = System.getenv("PROCESSOR_ARCHITEW6432");
+
+        // god fucking dammit this is so stupid
+        String realArch = (arch != null && arch.endsWith("64")
+                || wow64Arch != null && wow64Arch.endsWith("64")
+                ? "64" : "32").equals("64") ? "x64" : "x86";
+
+        // TODO: add more checks for the other OSes or something
+        if (os.contains("win")) {
+            realOs = "windows";
+        } else if (os.contains("mac")) {
+            realOs = "macos";
+        } else if (os.contains("linux")) {
+            realOs = "linux";
+        } else {
+            throw new IllegalArgumentException("Unsupported OS: " + os);
+        }
         setOperation("Downloads (4/6)", "Downloading JRE");
         if (!Files.exists(serverPath.resolve("jre"))) {
-            String os = System.getProperty("os.name").toLowerCase();
 
-            //https://stackoverflow.com/questions/47160990/how-to-determine-32-bit-os-or-64-bit-os-from-java-application
-            String arch = System.getenv("PROCESSOR_ARCHITECTURE");
-            String wow64Arch = System.getenv("PROCESSOR_ARCHITEW6432");
-
-            String realArch = arch != null && arch.endsWith("64")
-                    || wow64Arch != null && wow64Arch.endsWith("64")
-                    ? "64" : "32";
-
-            // god fucking dammit this is so stupid
-            // If 64, set realRealArch to "x64", otherwise set it to "x86"
-            String realRealArch = realArch.equals("64") ? "x64" : "x86";
-
-            String realOs;
-
-            // TODO: add more checks for the other OSes
-            if (os.contains("win")) {
-                realOs = "windows";
-            } else if (os.contains("mac")) {
-                realOs = "macos";
-                // copilot what
-            } else if (os.contains("linux")) {
-                realOs = "linux";
-            } else {
-                throw new IllegalArgumentException("Unsupported OS: " + os);
-            }
 
             Adoptium.Binary binary;
             if (modpack.server.java == null) {
                 // lets just, uhhh cheeseburger
-                binary = Adoptium.GetLatestAssets(getJavaReleaseForMinecraftVersion(modpack.minecraftVersion), realRealArch, realOs, "jre").Binary;
+
+                binary = Adoptium.GetLatestAssets(getJavaReleaseForMinecraftVersion(modpack.minecraftVersion), realArch, realOs, "jre").Binary;
             } else {
                 binary = Adoptium.GetReleaseAssetByVer(modpack.server.java.adoptium.releaseVersion, arch, os, "jre").Binaries[0];
             }
 
-            Path jrePath = serverPath.resolve("jre");
+
             if (!Files.exists(jrePath)) {
                 Files.createDirectory(jrePath);
             }
+
+            appendLog("Downloading JRE from " + binary.Package.Link);
             InputStream jreStream = Request.get(binary.Package.Link).execute().returnContent().asStream();
+
+            appendLog("Extracting JRE to " + jrePath);
             if (binary.Package.Link.endsWith(".tar.gz")) {
                 // tar.gz
                 try (TarArchiveInputStream tarIn = new TarArchiveInputStream(new GzipCompressorInputStream(jreStream))) {
@@ -238,6 +251,7 @@ public class ModpackServerInstaller {
                             Files.createDirectories(destEntryPath);
                         } else {
                             Files.copy(tarIn, destEntryPath);
+                            appendLog("Extracting " + destEntryPath);
                         }
                     }
                 }
@@ -246,15 +260,16 @@ public class ModpackServerInstaller {
                 try (ZipInputStream zipIn = new ZipInputStream(jreStream)) {
                     ZipEntry entry;
                     while ((entry = zipIn.getNextEntry()) != null) {
-                        String regex = "(jdk|jre[a-z0-9\\\\-]*)\\\\/(.*)";
-                        Pattern pattern = Pattern.compile(regex);
-                        Matcher matcher = pattern.matcher(entry.getName());
-
-                        Path destEntryPath = entry.getName().matches(regex) ? jrePath.resolve(matcher.group(2)) : jrePath;
-                        if (entry.isDirectory()) {
-                            Files.createDirectories(destEntryPath);
-                        } else {
-                            Files.copy(zipIn, destEntryPath);
+                        try {
+                        Path destEntryPath = Paths.get(jrePath + "/" + entry.getName().split("/", 2)[1]);
+                            if (entry.isDirectory()) {
+                                Files.createDirectories(destEntryPath);
+                            } else {
+                                appendLog("Extracting " + destEntryPath);
+                                Files.copy(zipIn, destEntryPath);
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
                         }
                     }
                 }
@@ -269,9 +284,9 @@ public class ModpackServerInstaller {
 
         // TODO: Add fabric support lmao
         setOperation("Downloads (5/6)", "Downloading Forge");
+        Forge.ForgeVersion forgeVersion = Forge.getRecommendedVersion(modpack.minecraftVersion);
         {
             if (modpack.forgeVersion != null) {
-                Forge.ForgeVersion forgeVersion = Forge.getRecommendedVersion(modpack.minecraftVersion);
 
                 if (forgeVersion == null) {
                     throw new IOException("No recommended version found");
@@ -279,14 +294,14 @@ public class ModpackServerInstaller {
                 // Get Installer
                 String installerUrl = Forge.Utils.getInstallerUrl(forgeVersion);
                 if (installerUrl == null) {
-                    // TODO: Implement recovery section for GUI and CLI, telling the user to download the installer manually, and rename it to forgeinstaller.jar
+                    // TODO: Implement recovery section for GUI and CLI, telling the user to download the installer manually, and rename it to forge-installer.jar
                     throw new IOException("No installer found");
                 }
+                appendLog("Downloading Forge installer from URL: " + installerUrl);
                 // Download installer
                 InputStream installerStream = Request.get(installerUrl).execute().returnContent().asStream();
-                Path installerJar = Files.createFile(serverPath.resolve("forge-installer.jar"));
+                Path installerJar = serverPath.resolve("forge-installer.jar");
                 Files.copy(installerStream, installerJar, StandardCopyOption.REPLACE_EXISTING);
-
 
             }
         }
@@ -300,50 +315,72 @@ public class ModpackServerInstaller {
         setOperation("Installation (1/3)", "Installing Forge Server", 1);
         {
             // set path for forgeinstaller.jar
-            Path installerJar = serverPath.resolve("forgeinstaller.jar");
+            Path installerJar = serverPath.resolve("forge-installer.jar");
 
-            int method = 0;
+//            appendLog("Using method 0 to install forge");
+            // Run installer
+            ProcessBuilder pb = new ProcessBuilder(
+                    "java",
+                    "-jar",
+                    installerJar.toString(),
+                    "--installServer",
+                    serverPath.toString()
+            );
 
-            if (method == 0) {
-                // Run installer
-                ProcessBuilder pb = new ProcessBuilder(
-                        "java",
-                        "-jar",
-                        installerJar.toString(),
-                        "--installServer",
-                        "--installDir",
-                        serverPath.toString()
-                );
+            // Log to file
 
-                // Log to file
-                Path logPath = Files.createFile(serverPath.resolve("forgeinstaller.log"));
-                pb.redirectError(logPath.toFile());
-                pb.redirectOutput(logPath.toFile());
-                Process process = pb.start();
+            Path logPath;
+            if (!Files.exists(serverPath.resolve("forge-installer.log"))) {
+                logPath = Files.createFile(serverPath.resolve("forge-installer.log"));
+            } else {
+                logPath = serverPath.resolve("forge-installer.log");
+            }
+            pb.redirectError(logPath.toFile());
+            pb.redirectOutput(logPath.toFile());
 
-                // Wait for installer to finish
-                try {
-                    process.waitFor();
-                } catch (InterruptedException e) {
-                    throw new IOException("Installer interrupted");
-                }
+            appendLog("Running installer");
+            Process process = pb.start();
 
-                // Check for errors
-                if (process.exitValue() != 0) {
-                    throw new IOException("Installer failed");
-                }
-            } else if (method == 1) {
-                try (URLClassLoader ucl = URLClassLoader.newInstance(new URL[]{
-                        ModpackServerInstaller.class.getProtectionDomain().getCodeSource().getLocation(),
-                        installerJar.toUri().toURL()
-                }, getParentClassLoader())) {
-                    Class<?> installer = ucl.loadClass("com.flleeppyy.serverinstaller.Installer.Guis");
-                    if (!(boolean) installer.getMethod("install", File.class, File.class).invoke(null, serverPath.toFile(), installerJar.toFile())) {
-                        throw new IOException("Installer failed");
+            // Output stdout to JTextPane
+            Thread stdoutThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        appendLog(line);
                     }
-                } catch (ClassNotFoundException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
+            });
+
+            stdoutThread.start();
+
+            // Wait for installer to finish
+            try {
+                process.waitFor();
+            } catch (InterruptedException e) {
+                throw new IOException("Forge Installer interrupted");
+            }
+
+            System.out.println(process.exitValue());
+            // Check for errors
+            if (process.exitValue() != 0) {
+                // Convert process error stream to string
+                StringBuilder error = new StringBuilder();
+                InputStream errorStream = process.getErrorStream();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(errorStream))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        error.append(line).append("\n");
+                    }
+                }
+
+                System.out.println(error);
+
+
+                throw new IOException("Forge Installer failed");
+
             }
         }
 
@@ -355,26 +392,61 @@ public class ModpackServerInstaller {
 
         setOperation("Installation (3/3)", "Setting up batch files",1 );
         {
-            if (modpack.server.java.javaArgs == null) {
+            String baseJavaArguments = "";
+            if (modpack.server.java == null || modpack.server.java.javaArgs == null) {
+                appendLog("Fetching args from instance config file");
                 ZipFile zipFile = new ZipFile(packFilePath);
-                FileHeader fileHeader = zipFile.getFileHeader("instance.cfg");
-                InputStream inputStream = zipFile.getInputStream(fileHeader);
-                String[] jvmArgs = new Ini(inputStream).get("JvmArgs", String.class).trim().split(" ");
-
+                InputStream is = zipFile.getInputStream(zipFile.getFileHeader("instance.cfg"));
+                String jvmArgsRaw = new PolyCfgParser(is).get("JvmArgs");
                 zipFile.close();
-
-                // Join args together
-                StringBuilder sb = new StringBuilder();
-                for (String arg : jvmArgs) {
-                    sb.append(arg).append(" ");
+                if (jvmArgsRaw != null) {
+                    baseJavaArguments = jvmArgsRaw;
+                } else {
+                    appendLog("No Java args detected");
                 }
-                modpack.server.java.javaArgs = sb.toString();
-
-                // Save to pack file
+            } else {
+                baseJavaArguments = modpack.server.java.javaArgs;
             }
+
+            // Get local start.bat resource as URl
+            String startBatContents = OtherUtils.getResource("/start.bat");
+            System.out.println(startBatContents);
+
+            StringBuilder arguments = new StringBuilder();
+
+            arguments.append(jrePath).append(realOs.equals("windows") ? "\\bin\\java.exe " : "/bin/java ");
+
+            // Search server folder for jar that starts with forge-1.
+            Path forgeJar = null;
+
+            for (Path path : Files.newDirectoryStream(serverPath)) {
+                if (path.toString().endsWith(".jar")) {
+                    if (path.toString().contains("forge-")) {
+                        forgeJar = path;
+                        break;
+                    }
+                }
+            }
+
+            if (forgeJar == null) {
+                appendLog("Forge jar not found, youll have to insert it manually.");
+                arguments.append("-jar ").append("replaceWithForgeServer.jar ");
+            } else {
+                arguments.append("-jar ").append(forgeJar.toFile().getName()).append(" ");
+            }
+
+            arguments.append(baseJavaArguments).append(" -nogui");
+
+            startBatContents = startBatContents.replace("%ARGUMENTSTEMPLATE%", arguments.toString());
+
+            // Write to file
+            Path startBatPath = serverPath.resolve("start.bat");
+            appendLog("Writing start.bat");
+            Files.write(startBatPath, startBatContents.getBytes());
         }
 
-
+        // Done
+        appendLog("Done");
         return 0;
     }
 
@@ -435,27 +507,51 @@ public class ModpackServerInstaller {
             mainFrame.dispose();
         }
 
-        mainFrame = new JFrame("Installing modpacks server...");
+        mainFrame = new JFrame("Installing modpack server...");
         mainFrame.setLayout(new BorderLayout(8,8));
         mainFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        mainFrame.setPreferredSize(new Dimension(400, 150));
+        mainFrame.setPreferredSize(new Dimension(500, 220));
         mainFrame.setLocationRelativeTo(null);
         mainFrame.setAlwaysOnTop(true);
         mainFrame.setResizable(false);
+
+        JPanel mainPanel = new JPanel();
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+        mainPanel.setLayout(new BorderLayout(4,4));
 
         currentOperationLabel = new JLabel("Starting...");
         currentOperationLabel.setHorizontalAlignment(JLabel.CENTER);
 
         progressBar = new JProgressBar();
-        progressBar.setToolTipText("Progress");
-        progressBar.setVisible(false);
+        progressBar.setName("Progress");
+        progressBar.setVisible(true);
         progressBar.setStringPainted(true);
+        progressBar.setMaximum(setProgressCalls);
 
-        mainFrame.add(currentOperationLabel, BorderLayout.NORTH);
-        mainFrame.add(progressBar, BorderLayout.SOUTH);
+        logTextPane = new JTextPane();
+        logTextPane.setPreferredSize(new Dimension(500, 100));
+        logTextPane.setEditable(false);
+
+        JScrollPane logScrollPane = new JScrollPane(logTextPane);
+        logScrollPane.setPreferredSize(new Dimension(500, 100));
+        logScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        logScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        mainPanel.add(currentOperationLabel, BorderLayout.NORTH);
+        mainPanel.add(logScrollPane, BorderLayout.CENTER);
+        mainPanel.add(progressBar, BorderLayout.SOUTH);
+
+        mainFrame.add(mainPanel, BorderLayout.CENTER);
         mainFrame.pack();
-
         mainFrame.setVisible(true);
+    }
+
+    void appendLog(String text) {
+        if (text.endsWith("\n")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        logTextPane.setText(logTextPane.getText() + text + "\n");
+        logTextPane.setCaretPosition(logTextPane.getDocument().getLength());
     }
 
     void killFrame() {
@@ -464,6 +560,7 @@ public class ModpackServerInstaller {
 
     void setOperation(String category, String operation) {
         this.currentOperationLabel.setText(category + ": " + operation);
+        appendLog(operation);
     }
 
     void setOperation(String category, String operation, int increaseProgress) {
@@ -472,7 +569,6 @@ public class ModpackServerInstaller {
     }
 
     void increaseProgress() {
-        progressBar.setMaximum(setProgressCalls);
         progressBar.setValue(progressBar.getValue() + 1);
     }
 

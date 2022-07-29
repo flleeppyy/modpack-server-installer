@@ -11,23 +11,17 @@ public class OtherUtils {
         StringBuilder val = new StringBuilder();
 
         try {
-            Class<?> cls = Class.forName("ClassLoaderDemo");
-
-            // returns the ClassLoader object associated with this Class
-            ClassLoader cLoader = cls.getClassLoader();
-
-            // input stream
-            InputStream i = cLoader.getResourceAsStream(rsc);
+            InputStream i = OtherUtils.class.getResourceAsStream(rsc);
             BufferedReader r = new BufferedReader(new InputStreamReader(i));
 
             // reads each line
             String l;
             while((l = r.readLine()) != null) {
-                val.append(l);
+                val.append(l + "\n");
             }
             i.close();
         } catch(Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         }
         return val.toString();
     }

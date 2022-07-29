@@ -34,8 +34,7 @@ public class Forge {
         @Nullable @SerializedName("mavenFiles") public Library[] MavenFiles;
         @Nullable @SerializedName("libraries") public Library[] libraries;
         @Nullable @SerializedName("minecraftArguments") public String MinecraftArguments;
-        @OverrideAnnotationOf @SerializedName("mainClass") public String mainClass;
-
+        public String mainClass;
     }
 
     public static class JarMod extends Library {
@@ -99,6 +98,8 @@ public class Forge {
             if (version == null) {
                 return null;
             }
+
+            version = forgeVersion.requires[0].equals + "-" + version;
             return "https://maven.minecraftforge.net/net/minecraftforge/forge/" + version + "/forge-" + version + "-installer.jar";
         }
     }
