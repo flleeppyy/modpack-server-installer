@@ -238,12 +238,12 @@ public class ModpackServerInstaller {
 
             appendLog("Extracting JRE to " + jrePath);
             if (binary.Package.Link.endsWith(".tar.gz")) {
+                String regex = "(jdk|jre[a-z0-9\\\\-]*)\\\\/(.*)";
+                Pattern pattern = Pattern.compile(regex);
                 // tar.gz
                 try (TarArchiveInputStream tarIn = new TarArchiveInputStream(new GzipCompressorInputStream(jreStream))) {
                     TarArchiveEntry entry;
                     while ((entry = tarIn.getNextTarEntry()) != null) {
-                        String regex = "(jdk|jre[a-z0-9\\\\-]*)\\\\/(.*)";
-                        Pattern pattern = Pattern.compile(regex);
                         Matcher matcher = pattern.matcher(entry.getName());
 
                         Path destEntryPath = entry.getName().matches(regex) ? jrePath.resolve(matcher.group(2)) : jrePath;
@@ -385,9 +385,45 @@ public class ModpackServerInstaller {
         }
 
         // Extract modpack
-        setOperation("Installation (2/3)", "Beating your ass in the quote retweets",1);
+        setOperation("Installation (2/3)", "Extracting modpack",1);
         {
+            // Folder that contains the modpack. This will match the server pack folder, as if you were extracting the modpack to the server pack folder
+            try (ZipInputStream zipIn = new ZipInputStream(new FileInputStream(packFilePath))) {
+                ZipEntry entry;
+                while ((entry = zipIn.getNextEntry()) != null) {
+                    if (modpack.baseMinecraftFolder != null) {
+                        // make sure the entry starts with the baseMinecraftFolder
+                        if (!entry.getName().startsWith(modpack.baseMinecraftFolder)) {
+                            continue;
+                        }
 
+                        // make sure the entry is not the baseMinecraftFolder itself
+                        if (entry.getName().equals(modpack.baseMinecraftFolder) || entry.getName().equals(modpack.baseMinecraftFolder + "/")) {
+                            continue;
+                        }
+
+                        // extract the entry
+                        Path destEntryPath = serverPath.resolve(entry.getName().substring(modpack.baseMinecraftFolder.length()));
+
+                        if (entry.isDirectory()) {
+                            Files.createDirectories(destEntryPath);
+                        } else {
+                            Files.copy(zipIn, destEntryPath);
+                            appendLog("Extracting " + destEntryPath);
+                        }
+                    } else {
+                        // extract the entry
+                        Path destEntryPath = serverPath.resolve(entry.getName());
+
+                        if (entry.isDirectory()) {
+                            Files.createDirectories(destEntryPath);
+                        } else {
+                            Files.copy(zipIn, destEntryPath);
+                            appendLog("Extracting " + destEntryPath);
+                        }
+                    }
+                }
+            }
         }
 
         setOperation("Installation (3/3)", "Setting up batch files",1 );
