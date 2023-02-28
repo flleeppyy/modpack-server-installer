@@ -11,7 +11,6 @@ import org.apache.hc.client5.http.fluent.Request;
 
 import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
-import javax.swing.event.HyperlinkListener;
 import javax.swing.text.*;
 import javax.swing.text.html.*;
 import java.awt.*;
@@ -21,6 +20,9 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.prefs.Preferences;
 
@@ -185,6 +187,7 @@ public class InstallModpack {
                     selectedModpackDescription.setText(
                             packText
                     );
+                    updateVersionBox();
                 }
             });
             JScrollPane selectedModpackDescriptionScroll = new JScrollPane(selectedModpackDescription);
@@ -209,9 +212,10 @@ public class InstallModpack {
 
             versionSelection = new JComboBox<>();
             System.out.println(versionSelection.getHeight());
-            versionSelection.setPreferredSize(new Dimension(80, versionSelection.getHeight()));
+            versionSelection.setPreferredSize(new Dimension(112, 24));
+            versionSelection.addItem("No Pack Selected");
             versionSelection.setEnabled(false);
-//            versionSelection.setVisible(true);
+            versionSelection.setVisible(true);
 
             okButton = new JButton("OK");
             okButton.setPreferredSize(size);
@@ -234,12 +238,31 @@ public class InstallModpack {
                     String validFolder = validateServerFolder();
                     if (validFolder != null) {
                         JOptionPane.showMessageDialog(null, validFolder, "Error", JOptionPane.ERROR_MESSAGE);
+                        okButton.setEnabled(true);
                         return;
                     }
                     modpackServerInstaller = new ModpackServerInstaller(serverFolder);
                     try {
-                        // TODO: implement version selection
-                        modpackServerInstaller.installModpack(selectedPack,"1.0.0-alpha.5",true,true);
+                        String version;
+                        // 0 = "Latest"
+                        if (versionSelection.getSelectedIndex() == 0 ) {
+                            version = selectedPack.versions[0];
+                        } else {
+                            version = (String) versionSelection.getSelectedItem();
+                        }
+                        boolean versionExists = false;
+                        for (String s : selectedPack.versions)
+                            if (Objects.equals(s, version)) {
+                                versionExists = true;
+                                break;
+                            }
+
+                        if (!versionExists) {
+                            JOptionPane.showMessageDialog(null, "The selected version does not exist in memory.", "Error", JOptionPane.ERROR_MESSAGE);
+                            return;
+                        }
+
+                        modpackServerInstaller.installModpack(selectedPack,version,true,true);
 
                         mainFrame.setVisible(false);
                         mainFrame.dispose();
@@ -247,8 +270,6 @@ public class InstallModpack {
                         ex.printStackTrace();
                     }
                     okButton.setEnabled(true);
-
-
                 }
             });
 
@@ -293,7 +314,6 @@ public class InstallModpack {
             }
         });
 
-
         mainFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         mainFrame.pack();
 
@@ -332,7 +352,7 @@ public class InstallModpack {
                 modpackList.setListData(modpacks);
                 modpackList.repaint();
                 resetModpackSelection();
-                updateVersionBox();
+//                updateVersionBox();
             } catch (NullPointerException e) {
                 JOptionPane.showMessageDialog(null, "The program has encountered an error on the level of which\nwe cannot fix/figure out how to fix. This is a common occurrence\nThe installer will now exit.", "Fatal error", JOptionPane.ERROR_MESSAGE);
                 System.exit(42069);
@@ -357,17 +377,22 @@ public class InstallModpack {
     }
 
     static String validateServerFolder() {
-        if (serverFolder.toString().length() < 1)
-            return "Not valid path";
+        // failsafe because my shit doesnt work
+        try {
+            if (serverFolder.toString().length() < 1)
+                throw new Error("lol");
 
-        if (!Files.isDirectory(serverFolder))
-            return "Folder is not a directory";
+            if (!Files.isDirectory(serverFolder))
+                return "Folder is not a directory";
 
+            if (!Files.isWritable(serverFolder))
+                return "Folder is not writable";
 
-        if (!Files.isWritable(serverFolder))
-            return "Folder is not writable";
+            return null;
+        } catch (Exception e) {
+            return "Not a valid path";
+        }
 
-        return null;
     }
 
     static boolean isFolderEmpty() {
@@ -385,10 +410,22 @@ public class InstallModpack {
     }
 
     static void updateVersionBox() {
+        System.out.println("Updating version box");
         if (selectedPack != null) {
-                versionSelection.removeAllItems();
-            for (String version : selectedPack.versions) {
-                versionSelection.addItem(version);
+            versionSelection.removeAllItems();
+            if (selectedPack.versions.length > 0) {
+                versionSelection.addItem("Latest");
+                Arrays.sort(selectedPack.versions);
+                List<String> newList = Arrays.asList(selectedPack.versions);
+                Collections.reverse(newList);
+                for (String version : selectedPack.versions) {
+                    versionSelection.addItem(version);
+                }
+                versionSelection.repaint();
+                versionSelection.setEnabled(true);
+            } else {
+                versionSelection.addItem("No Versions Available");
+                versionSelection.setEnabled(false);
             }
         }
     }

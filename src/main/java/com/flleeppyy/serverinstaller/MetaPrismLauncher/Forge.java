@@ -1,15 +1,13 @@
-package com.flleeppyy.serverinstaller.MetaPolyMC;
+package com.flleeppyy.serverinstaller.MetaPrismLauncher;
 
-import com.flleeppyy.serverinstaller.MetaPolyMC.Common.*;
+import com.flleeppyy.serverinstaller.MetaPrismLauncher.Common.*;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 import com.sun.istack.internal.Nullable;
-import com.sun.xml.internal.bind.annotation.OverrideAnnotationOf;
-import org.apache.hc.client5.http.fluent.Request;
 
 import java.io.IOException;
 
-import static com.flleeppyy.serverinstaller.MetaPolyMC.Common.getUrl;
+import static com.flleeppyy.serverinstaller.MetaPrismLauncher.Common.getUrl;
 
 public class Forge {
     public static final Gson gson = new Gson();

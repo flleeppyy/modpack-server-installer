@@ -1,4 +1,4 @@
-package com.flleeppyy.serverinstaller.MetaPolyMC;
+package com.flleeppyy.serverinstaller.MetaPrismLauncher;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
@@ -9,7 +9,7 @@ import java.io.IOException;
 
 public class Common {
     private static final Gson gson = new Gson();
-    public static final String baseUrl = "https://meta.polymc.org/v1/";
+    public static final String baseUrl = "https://meta.prismlauncher.org/v1/";
 
     public static class Artifact {
         @SerializedName("sha1") public String sha1;
@@ -90,7 +90,6 @@ public class Common {
         //mainClass(nullable)
 //        @Nullable @SerializedName("mainClass") public String mainClass;
     }
-
     public static Index getIndex() throws IOException {
         return getUrl(baseUrl, Index.class);
     }

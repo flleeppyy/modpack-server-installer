@@ -28,13 +28,12 @@ package com.flleeppyy.serverinstaller.Guis;
 import com.flleeppyy.serverinstaller.Adoptium;
 import com.flleeppyy.serverinstaller.Json.ModpackInfo;
 import com.flleeppyy.serverinstaller.Json.ModpackVersionSpec;
-import com.flleeppyy.serverinstaller.MetaPolyMC.Forge;
+import com.flleeppyy.serverinstaller.MetaPrismLauncher.Forge;
 import com.flleeppyy.serverinstaller.ModpackApi;
 import com.flleeppyy.serverinstaller.Utils.OtherUtils;
 import com.flleeppyy.serverinstaller.Utils.PolyCfgParser;
 import com.github.zafarkhaja.semver.Version;
 import net.lingala.zip4j.ZipFile;
-import net.lingala.zip4j.model.FileHeader;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
@@ -43,15 +42,12 @@ import org.apache.hc.client5.http.fluent.Request;
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -402,14 +398,21 @@ public class ModpackServerInstaller {
                             continue;
                         }
 
+                        String entryName = entry.getName()
+                                // 1, removes the beginning slash, preventing it from looking like F:\config\blah instead of F:\servers\config\blah
+                                .substring(modpack.baseMinecraftFolder.length()).substring(1);
                         // extract the entry
-                        Path destEntryPath = serverPath.resolve(entry.getName().substring(modpack.baseMinecraftFolder.length()));
+                        Path destEntryPath = serverPath.resolve(
+                                entryName
+                        );
 
-                        if (entry.isDirectory()) {
-                            Files.createDirectories(destEntryPath);
-                        } else {
+
+                        if (!entry.isDirectory()) {
+                            Files.createDirectories(destEntryPath.getParent());
                             Files.copy(zipIn, destEntryPath);
                             appendLog("Extracting " + destEntryPath);
+                        } else {
+                            Files.createDirectories(destEntryPath);
                         }
                     } else {
                         // extract the entry
@@ -473,7 +476,10 @@ public class ModpackServerInstaller {
 
             arguments.append(baseJavaArguments).append(" -nogui");
 
-            startBatContents = startBatContents.replace("%ARGUMENTSTEMPLATE%", arguments.toString());
+            startBatContents = startBatContents
+                    .replace("%ARGUMENTSTEMPLATE%", arguments.toString())
+                    .replace("\r\n", "\n")
+                    .replace("\n", "\r\n");
 
             // Write to file
             Path startBatPath = serverPath.resolve("start.bat");
@@ -546,7 +552,7 @@ public class ModpackServerInstaller {
         mainFrame = new JFrame("Installing modpack server...");
         mainFrame.setLayout(new BorderLayout(8,8));
         mainFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        mainFrame.setPreferredSize(new Dimension(500, 220));
+        mainFrame.setPreferredSize(new Dimension(500, 720));
         mainFrame.setLocationRelativeTo(null);
         mainFrame.setAlwaysOnTop(true);
         mainFrame.setResizable(false);

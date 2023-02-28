@@ -1,4 +1,4 @@
-package com.flleeppyy.serverinstaller.MetaPolyMC;
+package com.flleeppyy.serverinstaller.MetaPrismLauncher;
 
 import com.google.gson.annotations.SerializedName;
 

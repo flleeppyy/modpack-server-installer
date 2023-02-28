@@ -1,22 +1,19 @@
-@echo off && doskey #=REM
-cls
+@echo off
 
-# Check if eula.txt exists
 if exist eula.txt (
-    echo "eula.txt found"
+    goto :run
 ) else (
-    echo "eula.txt not found"
-    # Ask the user if they accept the Mojang EULA
-    echo "Do you accept the Mojang EULA (https://account.mojang.com/documents/minecraft_eula) (y/n)"
-    set answer=%~s0
-    if "%answer%" == "y" (
-        echo "eula.txt created"
-        echo "eula=true" > eula.txt
+    set /p accept_eula=Do you accept the Minecraft EULA? (Y/N)
+    if /i "%accept_eula%"=="Y" (
+        echo eula=true > eula.txt
     ) else (
-        echo "eula.txt not created"
-        echo "Please accept the EULA before running the game"
-        exit /b 1
+        echo You must accept the Minecraft EULA to continue.
+        pause
+        exit
     )
 )
+
+:run
+echo Starting...
 %ARGUMENTSTEMPLATE%
 pause
